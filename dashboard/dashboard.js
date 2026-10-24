@@ -10,6 +10,83 @@ let snapshot = null;
 let refreshFailed = false;
 let historyChart = null;
 
+const weatherCodes = {
+  0: "Clear sky", 1: "Mainly clear", 2: "Partly cloudy", 3: "Overcast",
+  45: "Fog", 48: "Freezing fog", 51: "Light drizzle", 53: "Drizzle", 55: "Dense drizzle",
+  56: "Freezing drizzle", 57: "Freezing drizzle", 61: "Light rain", 63: "Rain", 65: "Heavy rain",
+  66: "Freezing rain", 67: "Heavy freezing rain", 71: "Light snow", 73: "Snow", 75: "Heavy snow",
+  77: "Snow grains", 80: "Rain showers", 81: "Rain showers", 82: "Heavy showers",
+  85: "Snow showers", 86: "Heavy snow showers", 95: "Thunderstorm", 96: "Thunderstorm / hail",
+  97: "Heavy thunderstorm", 99: "Thunderstorm / hail",
+};
+const hourFormat = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit", timeZoneName: "short" });
+const dayFormat = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin", year: "numeric", month: "2-digit", day: "2-digit" });
+
+function validWeather(weather) {
+  const current = weather?.current;
+  const today = weather?.today;
+  return weather?.status === "ok" && current && today &&
+    ["temperature_c", "feels_like_c", "wind_kmh", "wind_direction_deg", "precipitation_mm", "weather_code"].every((key) => Number.isFinite(current[key])) &&
+    Number.isFinite(Date.parse(current.time)) && [today.sunrise, today.sunset].every((value) => Number.isFinite(Date.parse(value))) &&
+    [today.high_c, today.low_c].every(Number.isFinite) && typeof today.date === "string" &&
+    Array.isArray(weather.hourly) && weather.hourly.length > 0 && weather.hourly.every((point) => point &&
+      Number.isFinite(Date.parse(point.time)) && ["temperature_c", "rain_probability_pct", "precipitation_mm", "wind_kmh", "weather_code"].every((key) => Number.isFinite(point[key])));
+}
+
+function renderWeather() {
+  const weather = snapshot?.weather;
+  const status = document.querySelector("#weather-status");
+  const badge = document.querySelector("#weather-badge");
+  const details = document.querySelector("#weather-details");
+  const forecast = document.querySelector("#weather-forecast");
+  if (!validWeather(weather)) {
+    status.textContent = "Weather unavailable. Gauge observations are still shown.";
+    badge.textContent = "Unavailable";
+    badge.classList.add("stale");
+    details.hidden = true;
+    forecast.hidden = true;
+    return;
+  }
+  details.hidden = false;
+  forecast.hidden = false;
+  const current = weather.current;
+  const today = weather.today;
+  const age = Date.now() - Date.parse(current.time);
+  const isToday = today.date === dayFormat.format(new Date());
+  const stale = age > staleAfterMs || age < -5 * 60 * 1000 || !isToday;
+  badge.textContent = stale ? "Stale model data" : "Model data";
+  badge.classList.toggle("stale", stale);
+  status.textContent = `Valid ${dateFormat.format(new Date(current.time))} Berlin${stale ? " / Weather may be outdated" : ""}`;
+  const number = (value) => new Intl.NumberFormat("en-GB", { maximumFractionDigits: 1 }).format(value);
+  const compass = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(current.wind_direction_deg / 45) % 8];
+  document.querySelector("#weather-temperature").textContent = number(current.temperature_c);
+  document.querySelector("#weather-description").textContent = weatherCodes[current.weather_code] || "Unknown conditions";
+  document.querySelector("#weather-feels").textContent = `${number(current.feels_like_c)} \u00b0C`;
+  document.querySelector("#weather-wind").textContent = `${number(current.wind_kmh)} km/h ${compass}`;
+  document.querySelector("#weather-rain").textContent = `${number(current.precipitation_mm)} mm`;
+  document.querySelector("#weather-range").textContent = `${number(today.low_c)} / ${number(today.high_c)} \u00b0C`;
+  document.querySelector("#weather-sunrise").textContent = hourFormat.format(new Date(today.sunrise));
+  document.querySelector("#weather-sunset").textContent = hourFormat.format(new Date(today.sunset));
+  document.querySelector("#forecast-heading").textContent = isToday ? "Today's forecast" : `Forecast / ${today.date}`;
+  const fullDay = document.querySelector('[name="forecast-range"]:checked').value === "all";
+  const nextHour = Math.ceil(Date.now() / 3600000) * 3600000;
+  const hours = weather.hourly.filter((point) => fullDay || Date.parse(point.time) >= nextHour);
+  document.querySelector("#forecast-status").textContent = `${today.date} / ${stale ? "Stale model data" : "Hourly model forecast"}${hours.length ? "" : " / No forecast hours remain for this day"}`;
+  const rows = document.createDocumentFragment();
+  for (const point of hours) {
+    const row = document.createElement("tr");
+    const values = [hourFormat.format(new Date(point.time)), weatherCodes[point.weather_code] || "Unknown",
+      number(point.temperature_c), `${number(point.rain_probability_pct)}%`, number(point.precipitation_mm), number(point.wind_kmh)];
+    for (const value of values) {
+      const cell = document.createElement("td");
+      cell.textContent = value;
+      row.append(cell);
+    }
+    rows.append(row);
+  }
+  document.querySelector("#forecast-rows").replaceChildren(rows);
+}
+
 function renderHistory() {
   const metric = snapshot?.metrics.find((entry) => entry.id === "eisbach_water_level");
   const status = document.querySelector("#history-status");
@@ -141,8 +218,8 @@ function render() {
     fragment.append(item);
   }
   metrics.replaceChildren(fragment);
-  const count = new Set(snapshot.metrics.map((metric) => metric.source_url)).size;
-  document.querySelector("#source-count").textContent = `${count} ${count === 1 ? "source" : "sources"} / ${snapshot.metrics.length} ${snapshot.metrics.length === 1 ? "observation" : "observations"}`;
+  const count = new Set(snapshot.metrics.map((metric) => metric.source_url)).size + (validWeather(snapshot.weather) ? 1 : 0);
+  document.querySelector("#source-count").textContent = `${count} data ${count === 1 ? "source" : "sources"}`;
   const collected = document.querySelector("#collected-at");
   collected.dateTime = snapshot.collected_at;
   collected.textContent = `${dateFormat.format(new Date(snapshot.collected_at))} Berlin`;
@@ -154,6 +231,7 @@ function render() {
     showNotice("");
   }
   document.querySelector("#station-record").hidden = !snapshot.metrics.some((metric) => metric.id === "eisbach_water_level");
+  renderWeather();
 }
 
 async function loadSnapshot() {
@@ -179,6 +257,7 @@ async function loadSnapshot() {
 }
 
 document.querySelectorAll('[name="history-range"]').forEach((input) => input.addEventListener("change", renderHistory));
+document.querySelectorAll('[name="forecast-range"]').forEach((input) => input.addEventListener("change", renderWeather));
 refreshButton.addEventListener("click", loadSnapshot);
 setInterval(() => { if (snapshot) render(); }, 60 * 1000);
 setInterval(loadSnapshot, 5 * 60 * 1000);

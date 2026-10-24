@@ -30,6 +30,11 @@ PAGE = """
 
 
 class WaterLevelTests(unittest.TestCase):
+    def setUp(self) -> None:
+        weather_patch = patch("dashboard_danzer.fetch_weather", return_value={"status": "unavailable"})
+        self.mock_weather = weather_patch.start()
+        self.addCleanup(weather_patch.stop)
+
     def test_latest_reading_and_local_timezone(self) -> None:
         reading = parse_water_level(PAGE)
         self.assertEqual(reading.level_cm, 116)
@@ -77,6 +82,22 @@ class WaterLevelTests(unittest.TestCase):
             self.assertEqual(snapshot["metrics"][0]["history"][0]["value"], 117)
             self.assertEqual(snapshot["metrics"][0]["history_source_url"], HISTORY_URL)
             self.assertFalse(output.with_suffix(".json.tmp").exists())
+
+    @patch("dashboard_danzer.fetch_water_level_history")
+    @patch("dashboard_danzer.fetch_water_level")
+    def test_weather_failure_does_not_block_gauge_export(
+        self, mock_fetch: MagicMock, mock_history: MagicMock
+    ) -> None:
+        mock_fetch.return_value = parse_water_level(PAGE)
+        mock_history.return_value = parse_water_levels(PAGE)
+        self.mock_weather.side_effect = URLError("weather offline")
+        with TemporaryDirectory() as directory:
+            output = Path(directory) / "latest.json"
+            with patch("sys.argv", ["main.py", "--output", str(output)]), patch("sys.stderr"):
+                main()
+            snapshot = json.loads(output.read_text())
+            self.assertEqual(snapshot["weather"]["status"], "unavailable")
+            self.assertEqual(snapshot["metrics"][0]["value"], 116)
 
     @patch("dashboard_danzer.fetch_water_level_history")
     @patch("dashboard_danzer.fetch_water_level")

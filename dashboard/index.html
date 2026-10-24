@@ -16,7 +16,7 @@
     </header>
     <main>
       <div class="page-heading">
-        <div><p class="eyebrow">Eisbach / River observations</p><h1>Current conditions</h1></div>
+        <div><p class="eyebrow">Eisbach / River &amp; weather</p><h1>Current conditions</h1></div>
         <button id="refresh" type="button" title="Refresh readings" aria-label="Refresh readings">
           <img src="https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/refresh-cw.svg" width="18" height="18" alt="">
         </button>
@@ -26,7 +26,25 @@
         <span>Collection <time id="collected-at">&mdash;</time></span>
       </div>
       <p id="notice" class="notice" role="status" aria-live="polite">Loading observations...</p>
-      <section id="metrics" class="metrics" aria-label="Latest observations" aria-busy="true"></section>
+      <div class="conditions-grid">
+        <section id="metrics" class="metrics" aria-label="Latest observations" aria-busy="true"></section>
+        <section class="weather" aria-labelledby="weather-heading">
+          <div class="metric-heading"><h2 id="weather-heading">Weather / Munich</h2><span id="weather-badge" class="badge">Model data</span></div>
+          <p id="weather-status" class="history-status" role="status">Weather loading...</p>
+          <div id="weather-details" hidden>
+            <div class="weather-reading"><span id="weather-temperature"></span><span class="weather-unit">&deg;C</span><span id="weather-description"></span></div>
+            <dl class="weather-facts">
+              <div><dt>Feels like</dt><dd id="weather-feels"></dd></div>
+              <div><dt>Wind / from</dt><dd id="weather-wind"></dd></div>
+              <div><dt>Precip. / last 15 min</dt><dd id="weather-rain"></dd></div>
+              <div><dt>Day low / high</dt><dd id="weather-range"></dd></div>
+              <div><dt>Sunrise / Berlin</dt><dd id="weather-sunrise"></dd></div>
+              <div><dt>Sunset / Berlin</dt><dd id="weather-sunset"></dd></div>
+            </dl>
+          </div>
+          <a class="source" href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Weather data by Open-Meteo &nearr;</a>
+        </section>
+      </div>
       <section id="station-record" class="station-record" hidden>
         <div class="section-heading">
           <h2>Water level history</h2>
@@ -49,8 +67,21 @@
         <details id="history-table" hidden><summary>Measurements</summary><div class="table-scroll"><table><caption class="visually-hidden">Water levels in the selected time range</caption><thead><tr><th scope="col">Measured / Berlin</th><th scope="col">Water level / cm</th></tr></thead><tbody></tbody></table></div></details>
         <a class="source history-source" href="https://www.hnd.bayern.de/pegel/isar/muenchen-himmelreichbruecke-16515005/tabelle?methode=wasserstand&amp;days=7&amp;setdiskr=15" target="_blank" rel="noopener noreferrer">Data: HND Bayern / Station 16515005 &nearr;</a>
       </section>
+      <section id="weather-forecast" class="forecast" hidden>
+        <div class="section-heading">
+          <h2 id="forecast-heading">Today's forecast</h2>
+          <fieldset class="range-control"><legend class="visually-hidden">Forecast hours</legend>
+            <label><input type="radio" name="forecast-range" value="remaining" checked><span>From now</span></label>
+            <label><input type="radio" name="forecast-range" value="all"><span>Full day</span></label>
+          </fieldset>
+        </div>
+        <p id="forecast-status" class="history-status" role="status"></p>
+        <div class="forecast-scroll"><table><caption class="visually-hidden">Hourly model weather forecast for Munich</caption><thead><tr><th scope="col">Hour / Berlin</th><th scope="col">Conditions</th><th scope="col">Air / &deg;C</th><th scope="col">Rain chance</th><th scope="col">Precip. / mm</th><th scope="col">Wind / km/h</th></tr></thead><tbody id="forecast-rows"></tbody></table></div>
+        <p class="forecast-note">Model forecast, not a river-wave prediction. Rain totals and probabilities refer to the hour ending at the displayed time.</p>
+        <a class="source" href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Weather data by Open-Meteo &nearr;</a>
+      </section>
     </main>
-    <footer><span>City Surf / Observations, not a forecast</span><a href="data/latest.json">JSON snapshot &nearr;</a></footer>
+    <footer><span>City Surf / Gauge observations &amp; weather forecasts</span><a href="data/latest.json">JSON snapshot &nearr;</a></footer>
     <template id="metric-template">
       <article class="metric">
         <div class="metric-heading"><h2></h2><span class="badge"></span></div>

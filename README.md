@@ -1,9 +1,9 @@
 # City Surf
 
 A personal city-surf conditions dashboard, starting with the Eisbach water level.
-Python collects current and historical observations into a versioned JSON snapshot;
-GitHub Pages serves the dashboard. This is an observations dashboard, not yet a
-forecast or an assessment of wave quality, surf safety, or access.
+Python collects current and historical gauge observations and Munich weather into
+a versioned JSON snapshot; GitHub Pages serves the dashboard. Weather forecasts are
+not predictions of wave quality, surf safety, or access.
 
 ## Local Dashboard
 
@@ -35,8 +35,10 @@ GitHub schedules can be delayed; on public repositories they can be disabled aft
 60 days without repository activity. This is not a real-time alerting service.
 Pages must be available for your repository visibility and GitHub plan.
 
-Collection or validation failures stop publication, leaving the previous deployment
-online. The dashboard recomputes staleness even while open. All deployed data is
+Gauge collection or validation failures stop publication, leaving the previous
+deployment online. Weather is optional: an API or validation failure publishes fresh
+gauge data with weather explicitly unavailable. No old weather is silently reused.
+The dashboard recomputes staleness even while open. All deployed data is
 public. No tokens or secrets belong in the JSON. The workflow uses GitHub's built-in
 deployment token and does not require a personal access token.
 
@@ -46,8 +48,8 @@ deployment token and does not require a personal access token.
 Each metric has `id`, `name`, `location`, `value`, `unit`, `status`, `measured_at`,
 `station_id`, `source_name`, and `source_url`. The UI accepts `status: "ok"` and
 determines staleness from `measured_at`, not collection time. Future collectors can
-append metrics using this contract. Failed sources currently block deployment;
-partial-success behavior should be defined when adding another source.
+append metrics using this contract. Gauge failures block deployment; the separate
+optional `weather` field uses `status: "ok"` or `status: "unavailable"`.
 
 The Eisbach metric additionally includes `history_source_url` and `history`, a
 chronological array of `{ "measured_at": "<ISO 8601>", "value": 116 }` samples in cm.
@@ -64,6 +66,46 @@ either current or historical data stops deployment and preserves the previous si
 
 Chart.js 4.4.8 is vendored under `dashboard/vendor/`, with its MIT license alongside
 the distribution. No build tool or external chart service is required.
+
+## Weather
+
+Open-Meteo provides current model conditions and the current day's hourly weather
+forecast near the Eisbach (48.1435 N, 11.5877 E). The weather model grid cell may
+be several kilometres away; this is not an on-site station or a wave forecast.
+Current weather is based on 15-minute model data, not direct local observations.
+
+The panel includes air temperature, feels-like temperature, wind speed/direction,
+recent precipitation, today's low/high, sunrise and sunset. The hourly table adds
+precipitation probability, amount, and weather conditions. "From now" excludes
+elapsed hours; "Full day" also shows earlier model values. Precipitation totals and
+probabilities refer to the hour ending at the displayed time. All times use
+Europe/Berlin; repeated daylight-saving hours retain distinct UTC offsets and zone
+labels. Sunrise and sunset do not account for local tree or building shade.
+
+The `weather` snapshot field contains `current`, `today`, and `hourly` objects with
+ISO 8601 valid times. Temperatures are Celsius, wind is km/h, precipitation is mm,
+and precipitation probability is percent. Weather older than 90 minutes or belonging
+to a different calendar day is marked stale; an older forecast is labelled with its
+actual date instead of "today". Unknown weather codes display "Unknown conditions".
+
+No API key is needed for this personal, non-commercial use. The free API's limits
+are documented in [Open-Meteo's terms](https://open-meteo.com/en/terms). The existing
+schedule normally makes 48 weather requests per day, plus manual and push runs.
+Weather data are attributed to [Open-Meteo](https://open-meteo.com/), under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); field names and timestamps
+are normalized for this dashboard. Commercial use requires reviewing the API plan.
+
+## Other Wave-Relevant Sources
+
+- HND also publishes [discharge at this station](https://www.hnd.bayern.de/pegel/isar/muenchen-himmelreichbruecke-16515005/abfluss)
+	in cubic metres per second. Together with level and recent changes, it is a useful
+	next input, but cannot determine wave quality or safe access by itself.
+- Water temperature would help with thermal exposure planning if a representative
+	nearby source is available. Air temperature is not a substitute.
+- Official wave closures, works, and access notices should override any inferred
+	surf recommendation. These need a verified official source before integration.
+- Wind, daylight, and rain help session planning. Local rainfall alone is not a
+	reliable predictor of Eisbach flow, wave shape, or water quality.
 
 ## Eisbach Collector
 

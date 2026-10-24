@@ -1,6 +1,7 @@
 import argparse
 import json
 import math
+import sys
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -8,6 +9,8 @@ from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
 from bs4 import BeautifulSoup
+
+from dashboard_danzer.weather import WEATHER_SOURCE_URL, fetch_weather
 
 
 SOURCE_URL = (
@@ -113,6 +116,15 @@ def main() -> None:
                 }
             ],
         }
+        try:
+            snapshot["weather"] = fetch_weather()
+        except (OSError, ValueError) as error:
+            snapshot["weather"] = {
+                "status": "unavailable",
+                "source_name": "Open-Meteo",
+                "source_url": WEATHER_SOURCE_URL,
+            }
+            print(f"Weather unavailable; publishing gauge data only: {error}", file=sys.stderr)
         content = json.dumps(snapshot, indent=2, allow_nan=False) + "\n"
         args.output.parent.mkdir(parents=True, exist_ok=True)
         temporary = args.output.with_suffix(args.output.suffix + ".tmp")

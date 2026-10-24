@@ -25,6 +25,23 @@ time { font-variant-numeric: tabular-nums; }
 .notice.error { color: #9c3434; border-color: #9c3434; background: #fff0f0; }
 [hidden] { display: none !important; }
 .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 310px), 1fr)); gap: 24px; padding: 32px 0; }
+.conditions-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; }
+.conditions-grid > * { min-width: 0; }
+.weather { padding: 32px 0; }
+.weather-reading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; margin: 12px 0 18px; }
+#weather-temperature { font: 40px/1.2 "IBM Plex Mono", monospace; }
+.weather-unit { font-size: 20px; color: var(--muted); }
+#weather-description { font-size: 13px; color: var(--muted); margin-left: 8px; }
+.weather-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
+.weather-facts > div { display: block; padding: 11px 0; }
+.weather-facts dd { margin-top: 5px; text-align: left; }
+.forecast { border-top: 1px solid var(--line); padding: 28px 0 36px; }
+.forecast-scroll { overflow: auto; max-height: 420px; margin: 20px 0; }
+.forecast-scroll table { width: 100%; min-width: 620px; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.forecast-scroll th, .forecast-scroll td { padding: 14px 10px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.forecast-scroll th:first-child, .forecast-scroll td:first-child, .forecast-scroll th:nth-child(2), .forecast-scroll td:nth-child(2) { text-align: left; }
+.forecast-scroll th { position: sticky; top: 0; background: var(--paper); font-size: 11px; font-weight: 500; color: var(--muted); }
+.forecast-note { font-size: 12px; line-height: 1.6; color: var(--muted); }
 .metric { padding: 0 0 8px; min-width: 0; animation: arrive .3s ease-out; }
 .metric-heading, .section-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
 h2 { font-size: 17px; font-weight: 600; margin: 0; }
@@ -70,3 +87,4 @@ footer { border-top: 1px solid var(--line); padding-block: 22px; display: flex; 
 @media (min-width: 850px) { .metrics:has(.metric:only-child) .metric { max-width: 600px; } }
 @media (max-width: 540px) { .masthead { padding: 18px 20px; min-height: 72px; } .brand { font-size: 19px; gap: 12px; } .brand span { display: none; } main, footer { padding-inline: 20px; } .page-heading { padding-top: 30px; } h1 { font-size: 28px; } .metric-heading { flex-wrap: wrap; gap: 8px; } .value { font-size: 56px; } .section-heading { align-items: baseline; } }
 @media (max-width: 540px) { .station-record .section-heading { flex-wrap: wrap; } .chart-container { height: 270px; } .history-summary dd { font-size: 18px; } footer { flex-wrap: wrap; } }
+@media (max-width: 760px) { .conditions-grid { grid-template-columns: 1fr; gap: 0; } .weather { border-top: 1px solid var(--line); } .forecast .section-heading { flex-wrap: wrap; } }

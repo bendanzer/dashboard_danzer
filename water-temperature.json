@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "source_url": "https://www.eisbachwetter.de/",
+  "statistic": "reported_72h_average",
+  "unit": "celsius",
+  "observations": [
+    {
+      "collected_at": "2026-10-24T20:27:34.082058+00:00",
+      "value_c": 11.8,
+      "source_updated_text": "- Aktualisiert am 24.10.2026 um 10:19pm -",
+      "source_update_unchanged": false
+    }
+  ]
+}

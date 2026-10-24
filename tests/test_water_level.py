@@ -1,8 +1,11 @@
+import json
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 from urllib.error import URLError
 
-from dashboard_danzer import SOURCE_URL, fetch_water_level, parse_water_level
+from dashboard_danzer import SOURCE_URL, fetch_water_level, main, parse_water_level
 
 
 PAGE = """
@@ -35,6 +38,37 @@ class WaterLevelTests(unittest.TestCase):
         for page in ("<html></html>", PAGE.replace("Wasserstand", "Abfluss")):
             with self.subTest(page=page), self.assertRaisesRegex(ValueError, "No valid"):
                 parse_water_level(page)
+
+    def test_nonfinite_values_are_not_readings(self) -> None:
+        for value in ("NaN", "inf", "-inf"):
+            with self.subTest(value=value):
+                reading = parse_water_level(PAGE.replace(">116<", f">{value}<"))
+                self.assertEqual(reading.level_cm, 117)
+
+    @patch("dashboard_danzer.fetch_water_level")
+    def test_dashboard_export(self, mock_fetch: MagicMock) -> None:
+        mock_fetch.return_value = parse_water_level(PAGE)
+        with TemporaryDirectory() as directory:
+            output = Path(directory) / "data" / "latest.json"
+            with patch("sys.argv", ["main.py", "--output", str(output)]):
+                main()
+            snapshot = json.loads(output.read_text())
+            self.assertEqual(snapshot["schema_version"], 1)
+            self.assertIn("collected_at", snapshot)
+            self.assertEqual(snapshot["metrics"][0]["value"], 116)
+            self.assertEqual(snapshot["metrics"][0]["unit"], "cm")
+            self.assertEqual(snapshot["metrics"][0]["status"], "ok")
+            self.assertFalse(output.with_suffix(".json.tmp").exists())
+
+    @patch("dashboard_danzer.fetch_water_level", side_effect=URLError("offline"))
+    def test_failed_fetch_preserves_snapshot(self, _mock_fetch: MagicMock) -> None:
+        with TemporaryDirectory() as directory:
+            output = Path(directory) / "latest.json"
+            output.write_text("previous snapshot")
+            with patch("sys.argv", ["main.py", "--output", str(output)]):
+                with self.assertRaises(SystemExit):
+                    main()
+            self.assertEqual(output.read_text(), "previous snapshot")
 
     @patch("dashboard_danzer.urlopen")
     def test_fetch_uses_timeout_and_parses_response(self, mock_urlopen: MagicMock) -> None:

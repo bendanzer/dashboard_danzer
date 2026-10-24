@@ -1,4 +1,53 @@
-# Eisbach Water Level
+# Danzer Dashboard
+
+A static dashboard for local observations, starting with the Eisbach water level.
+Python collects a versioned JSON snapshot; GitHub Pages serves the dashboard.
+
+## Local Dashboard
+
+```sh
+uv run main.py --output dashboard/data/latest.json
+uv run python -m http.server 8000 --directory dashboard --bind 127.0.0.1
+```
+
+Open http://127.0.0.1:8000. The dashboard needs an HTTP server to load JSON.
+Refresh reloads the deployed snapshot, not the upstream gauge. It also checks for
+new snapshots every five minutes. Readings older than 90 minutes are marked stale.
+Times are displayed in Europe/Berlin, including daylight-saving adjustments.
+The station chart is loaded directly from HND and can differ from the snapshot.
+
+## GitHub Pages
+
+1. Push these changes to the `main` branch of `bendanzer/dashboard_danzer`.
+2. In repository **Settings > Pages > Build and deployment**, select **GitHub Actions**.
+3. In **Actions > Publish Dashboard**, select **Run workflow** if needed.
+4. After a successful deployment, visit https://bendanzer.github.io/dashboard_danzer/.
+
+The workflow tests pull requests without publishing. Pushes to `main`, manual runs,
+and the schedule (17 and 47 minutes past each hour, UTC) collect data and deploy.
+GitHub schedules can be delayed; on public repositories they can be disabled after
+60 days without repository activity. This is not a real-time alerting service.
+Pages must be available for your repository visibility and GitHub plan.
+
+Collection or validation failures stop publication, leaving the previous deployment
+online. The dashboard recomputes staleness even while open. All deployed data is
+public. No tokens or secrets belong in the JSON. The workflow uses GitHub's built-in
+deployment token and does not require a personal access token.
+
+## Snapshot Contract
+
+`--output` writes `schema_version: 1`, `collected_at` (UTC), and a `metrics` array.
+Each metric has `id`, `name`, `location`, `value`, `unit`, `status`, `measured_at`,
+`station_id`, `source_name`, and `source_url`. The UI accepts `status: "ok"` and
+determines staleness from `measured_at`, not collection time. Future collectors can
+append metrics using this contract. Failed sources currently block deployment;
+partial-success behavior should be defined when adding another source.
+
+Generated JSON is ignored by Git and deployed as part of the Pages artifact.
+It is a latest-reading snapshot, not historical storage. Trend charts will require
+a separate persistent archive; the current chart is provided by HND Bayern.
+
+## Eisbach Collector
 
 Fetch the latest published water level for Munich's Himmelreichbruecke / Eisbach
 gauge (station 16515005) from the Bavarian flood information service.

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <title>Danzer | Local Conditions</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="dashboard.js" defer></script>
+  </head>
+  <body>
+    <header class="masthead">
+      <a class="brand" href="./">DANZER<span>Local conditions</span></a>
+      <span class="region">Munich, DE <span class="region-dot" aria-hidden="true"></span></span>
+    </header>
+    <main>
+      <div class="page-heading">
+        <div><p class="eyebrow">Environmental observations</p><h1>Overview</h1></div>
+        <button id="refresh" type="button" title="Refresh readings" aria-label="Refresh readings">
+          <img src="https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/refresh-cw.svg" width="18" height="18" alt="">
+        </button>
+      </div>
+      <div class="summary-bar">
+        <span id="source-count">Sources &mdash;</span>
+        <span>Collection <time id="collected-at">&mdash;</time></span>
+      </div>
+      <p id="notice" class="notice" role="status" aria-live="polite">Loading observations...</p>
+      <section id="metrics" class="metrics" aria-label="Latest observations" aria-busy="true"></section>
+      <section id="station-record" class="station-record" hidden>
+        <div class="section-heading"><h2>Station record</h2><a href="https://www.hnd.bayern.de/pegel/isar/muenchen-himmelreichbruecke-16515005" target="_blank" rel="noopener noreferrer">HND Bayern &nearr;</a></div>
+        <figure>
+          <img id="station-chart" width="600" height="426" alt="HND Bayern water-level chart for the Eisbach at Himmelreichbruecke" referrerpolicy="no-referrer">
+          <figcaption id="chart-caption">Published by HND Bayern. Chart updates independently of this snapshot.</figcaption>
+        </figure>
+      </section>
+    </main>
+    <footer><span>Danzer / Observations</span><a href="data/latest.json">JSON snapshot &nearr;</a></footer>
+    <template id="metric-template">
+      <article class="metric">
+        <div class="metric-heading"><h2></h2><span class="badge"></span></div>
+        <p class="location"></p>
+        <div class="reading"><span class="value"></span><span class="unit"></span></div>
+        <p class="datum">Above gauge datum, not water depth</p>
+        <dl><div><dt>Measured</dt><dd><time class="measured-at"></time></dd></div><div><dt>Station</dt><dd class="station-id"></dd></div></dl>
+        <a class="source" target="_blank" rel="noopener noreferrer"></a>
+      </article>
+    </template>
+  </body>
+</html>

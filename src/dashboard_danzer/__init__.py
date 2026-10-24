@@ -1,6 +1,9 @@
+import argparse
 import json
+import math
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import UTC, datetime
+from pathlib import Path
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
@@ -40,6 +43,8 @@ def parse_water_level(html: str) -> WaterLevel:
                 level_cm = float(cells[1].get_text(strip=True).replace(",", "."))
             except ValueError:
                 continue
+            if not math.isfinite(level_cm):
+                continue
             readings.append(WaterLevel(level_cm=level_cm, measured_at=measured_at))
     if not readings:
         raise ValueError("No valid water-level readings found on the HND page.")
@@ -56,10 +61,38 @@ def fetch_water_level(*, timeout: float = 15) -> WaterLevel:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Fetch the latest Eisbach water level.")
+    parser.add_argument("--output", type=Path, help="Write a dashboard JSON snapshot.")
+    args = parser.parse_args()
     try:
         reading = fetch_water_level()
+        payload = asdict(reading)
+        payload["measured_at"] = reading.measured_at.isoformat()
+        if args.output is None:
+            print(json.dumps(payload, indent=2, allow_nan=False))
+            return
+        snapshot = {
+            "schema_version": 1,
+            "collected_at": datetime.now(UTC).isoformat(),
+            "metrics": [
+                {
+                    "id": "eisbach_water_level",
+                    "name": "Eisbach water level",
+                    "location": "Munich / Himmelreichbruecke",
+                    "value": reading.level_cm,
+                    "unit": "cm",
+                    "status": "ok",
+                    "measured_at": reading.measured_at.isoformat(),
+                    "station_id": reading.station_id,
+                    "source_name": "HND Bayern",
+                    "source_url": reading.source_url,
+                }
+            ],
+        }
+        content = json.dumps(snapshot, indent=2, allow_nan=False) + "\n"
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        temporary = args.output.with_suffix(args.output.suffix + ".tmp")
+        temporary.write_text(content, encoding="utf-8")
+        temporary.replace(args.output)
     except (OSError, ValueError) as error:
         raise SystemExit(f"Could not fetch Eisbach water level: {error}") from error
-    payload = asdict(reading)
-    payload["measured_at"] = reading.measured_at.isoformat()
-    print(json.dumps(payload, indent=2))

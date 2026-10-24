@@ -1,0 +1,21 @@
+[project]
+name = "dashboard-danzer"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Ben Danzer", email = "ben.danzer@orbem.ai" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "beautifulsoup4>=4.12,<5",
+    "numpy>=2.5.3",
+    "pandas>=3.0.6",
+]
+
+[project.scripts]
+dashboard-danzer = "dashboard_danzer:main"
+
+[build-system]
+requires = ["uv_build>=0.13.1,<0.14.0"]
+build-backend = "uv_build"

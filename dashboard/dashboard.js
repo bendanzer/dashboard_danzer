@@ -8,6 +8,94 @@ const dateFormat = new Intl.DateTimeFormat("en-GB", {
 });
 let snapshot = null;
 let refreshFailed = false;
+let historyChart = null;
+
+function renderHistory() {
+  const metric = snapshot?.metrics.find((entry) => entry.id === "eisbach_water_level");
+  const status = document.querySelector("#history-status");
+  const container = document.querySelector("#chart-container");
+  const summary = document.querySelector(".history-summary");
+  const table = document.querySelector("#history-table");
+  if (historyChart) historyChart.destroy();
+  historyChart = null;
+  container.hidden = true;
+  summary.hidden = true;
+  table.hidden = true;
+  const valid = Array.isArray(metric?.history) && metric.history.length > 0 &&
+    metric.history.every((point) => Number.isFinite(point?.value) && Number.isFinite(Date.parse(point.measured_at)));
+  if (!valid) {
+    status.textContent = "Historical readings unavailable for this snapshot.";
+    return;
+  }
+  const unique = new Map(metric.history.map((point) => [Date.parse(point.measured_at), point.value]));
+  const points = [...unique].sort((first, second) => first[0] - second[0]).map(([time, value]) => ({ x: time, y: value }));
+  const rangeDays = Number(document.querySelector('[name="history-range"]:checked').value);
+  const end = points.at(-1).x;
+  const start = end - rangeDays * 24 * 60 * 60 * 1000;
+  const visible = points.filter((point) => point.x >= start);
+  const values = visible.map((point) => point.y);
+  const minimum = Math.min(...values);
+  const maximum = Math.max(...values);
+  const change = visible.at(-1).y - visible[0].y;
+  const format = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 1 });
+  document.querySelector("#history-min").textContent = `${format.format(minimum)} cm`;
+  document.querySelector("#history-max").textContent = `${format.format(maximum)} cm`;
+  document.querySelector("#history-change").textContent = `${change > 0 ? "+" : ""}${format.format(change)} cm`;
+  status.textContent = `${visible.length} observations / ${dateFormat.format(new Date(visible[0].x))} to ${dateFormat.format(new Date(end))} / Berlin time`;
+  summary.hidden = false;
+  const rows = document.createDocumentFragment();
+  for (const point of [...visible].reverse()) {
+    const row = document.createElement("tr");
+    const time = document.createElement("td");
+    const value = document.createElement("td");
+    time.textContent = dateFormat.format(new Date(point.x));
+    value.textContent = format.format(point.y);
+    row.append(time, value);
+    rows.append(row);
+  }
+  table.querySelector("tbody").replaceChildren(rows);
+  table.hidden = false;
+  if (typeof window.Chart !== "function") {
+    status.textContent += " / Chart unavailable";
+    return;
+  }
+  container.hidden = false;
+  const canvas = document.querySelector("#water-level-chart");
+  canvas.setAttribute("aria-label", `Eisbach water levels, ${visible.length} observations, minimum ${minimum} cm, maximum ${maximum} cm`);
+  historyChart = new window.Chart(canvas, {
+    type: "line",
+    data: { datasets: [{
+      label: "Water level", data: visible, parsing: false, normalized: true,
+      borderColor: "#176448", backgroundColor: "rgba(23, 100, 72, 0.08)",
+      borderWidth: 2, fill: true, pointRadius: visible.length === 1 ? 4 : 0,
+      pointHitRadius: 16, pointHoverRadius: 4, tension: 0, spanGaps: 30 * 60 * 1000,
+    }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: "nearest", axis: "x", intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: { displayColors: false, callbacks: {
+          title: (items) => `${dateFormat.format(new Date(items[0].parsed.x))} Berlin`,
+          label: (item) => `${format.format(item.parsed.y)} cm`,
+        } },
+      },
+      scales: {
+        x: { type: "linear", min: start, max: end, grid: { display: false }, ticks: {
+          count: rangeDays === 1 ? 5 : rangeDays + 1,
+          maxTicksLimit: rangeDays === 1 ? 5 : 7, maxRotation: 0,
+          callback: (value) => new Intl.DateTimeFormat("en-GB", rangeDays === 1
+            ? { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" }
+            : { timeZone: "Europe/Berlin", day: "2-digit", month: "short" }).format(new Date(value)),
+        } },
+        y: { suggestedMin: minimum - 3, suggestedMax: maximum + 3,
+          title: { display: true, text: "Water level / cm" },
+          grid: { color: "#e5eae6" }, ticks: { precision: 0, maxTicksLimit: 6 },
+        },
+      },
+    },
+  });
+}
 
 function showNotice(message, state = "") {
   notice.textContent = message;
@@ -79,10 +167,7 @@ async function loadSnapshot() {
     snapshot = data;
     refreshFailed = false;
     render();
-    const chart = document.querySelector("#station-chart");
-    if (!chart.hasAttribute("src")) {
-      chart.src = "https://www.hnd.bayern.de/webservices/graphik.php?cache=hnd&statnr=16515005&thema=hochwasser.meldestufen&wert=wasserstand&vhs=false&geber=0";
-    }
+    renderHistory();
   } catch {
     refreshFailed = true;
     if (snapshot) render();
@@ -93,10 +178,7 @@ async function loadSnapshot() {
   }
 }
 
-document.querySelector("#station-chart").addEventListener("error", () => {
-  document.querySelector("#station-chart").hidden = true;
-  document.querySelector("#chart-caption").textContent = "Chart unavailable. View the station record on HND Bayern.";
-});
+document.querySelectorAll('[name="history-range"]').forEach((input) => input.addEventListener("change", renderHistory));
 refreshButton.addEventListener("click", loadSnapshot);
 setInterval(() => { if (snapshot) render(); }, 60 * 1000);
 setInterval(loadSnapshot, 5 * 60 * 1000);

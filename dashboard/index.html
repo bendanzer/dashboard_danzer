@@ -4,18 +4,19 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="light">
-    <title>Danzer | Local Conditions</title>
+    <title>City Surf | Eisbach Conditions</title>
     <link rel="stylesheet" href="styles.css">
+    <script src="vendor/chart.umd.js" defer></script>
     <script src="dashboard.js" defer></script>
   </head>
   <body>
     <header class="masthead">
-      <a class="brand" href="./">DANZER<span>Local conditions</span></a>
+      <a class="brand" href="./">CITY SURF<span>Danzer / Munich</span></a>
       <span class="region">Munich, DE <span class="region-dot" aria-hidden="true"></span></span>
     </header>
     <main>
       <div class="page-heading">
-        <div><p class="eyebrow">Environmental observations</p><h1>Overview</h1></div>
+        <div><p class="eyebrow">Eisbach / River observations</p><h1>Current conditions</h1></div>
         <button id="refresh" type="button" title="Refresh readings" aria-label="Refresh readings">
           <img src="https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/refresh-cw.svg" width="18" height="18" alt="">
         </button>
@@ -27,14 +28,29 @@
       <p id="notice" class="notice" role="status" aria-live="polite">Loading observations...</p>
       <section id="metrics" class="metrics" aria-label="Latest observations" aria-busy="true"></section>
       <section id="station-record" class="station-record" hidden>
-        <div class="section-heading"><h2>Station record</h2><a href="https://www.hnd.bayern.de/pegel/isar/muenchen-himmelreichbruecke-16515005" target="_blank" rel="noopener noreferrer">HND Bayern &nearr;</a></div>
+        <div class="section-heading">
+          <h2>Water level history</h2>
+          <fieldset class="range-control"><legend class="visually-hidden">History range</legend>
+            <label><input type="radio" name="history-range" value="1" checked><span>24h</span></label>
+            <label><input type="radio" name="history-range" value="3"><span>3 days</span></label>
+            <label><input type="radio" name="history-range" value="7"><span>7 days</span></label>
+          </fieldset>
+        </div>
+        <p id="history-status" class="history-status" role="status"></p>
+        <dl class="history-summary" hidden>
+          <div><dt>Minimum</dt><dd id="history-min"></dd></div>
+          <div><dt>Maximum</dt><dd id="history-max"></dd></div>
+          <div><dt>Change</dt><dd id="history-change"></dd></div>
+        </dl>
         <figure>
-          <img id="station-chart" width="600" height="426" alt="HND Bayern water-level chart for the Eisbach at Himmelreichbruecke" referrerpolicy="no-referrer">
-          <figcaption id="chart-caption">Published by HND Bayern. Chart updates independently of this snapshot.</figcaption>
+          <div id="chart-container" class="chart-container" hidden><canvas id="water-level-chart" role="img" aria-label="Historical Eisbach water levels" aria-describedby="history-status"></canvas></div>
+          <figcaption>Water level above gauge datum. Gauge measurements do not assess wave quality, safety, or access.</figcaption>
         </figure>
+        <details id="history-table" hidden><summary>Measurements</summary><div class="table-scroll"><table><caption class="visually-hidden">Water levels in the selected time range</caption><thead><tr><th scope="col">Measured / Berlin</th><th scope="col">Water level / cm</th></tr></thead><tbody></tbody></table></div></details>
+        <a class="source history-source" href="https://www.hnd.bayern.de/pegel/isar/muenchen-himmelreichbruecke-16515005/tabelle?methode=wasserstand&amp;days=7&amp;setdiskr=15" target="_blank" rel="noopener noreferrer">Data: HND Bayern / Station 16515005 &nearr;</a>
       </section>
     </main>
-    <footer><span>Danzer / Observations</span><a href="data/latest.json">JSON snapshot &nearr;</a></footer>
+    <footer><span>City Surf / Observations, not a forecast</span><a href="data/latest.json">JSON snapshot &nearr;</a></footer>
     <template id="metric-template">
       <article class="metric">
         <div class="metric-heading"><h2></h2><span class="badge"></span></div>

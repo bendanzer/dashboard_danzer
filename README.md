@@ -1,7 +1,9 @@
-# Danzer Dashboard
+# City Surf
 
-A static dashboard for local observations, starting with the Eisbach water level.
-Python collects a versioned JSON snapshot; GitHub Pages serves the dashboard.
+A personal city-surf conditions dashboard, starting with the Eisbach water level.
+Python collects current and historical observations into a versioned JSON snapshot;
+GitHub Pages serves the dashboard. This is an observations dashboard, not yet a
+forecast or an assessment of wave quality, surf safety, or access.
 
 ## Local Dashboard
 
@@ -14,7 +16,11 @@ Open http://127.0.0.1:8000. The dashboard needs an HTTP server to load JSON.
 Refresh reloads the deployed snapshot, not the upstream gauge. It also checks for
 new snapshots every five minutes. Readings older than 90 minutes are marked stale.
 Times are displayed in Europe/Berlin, including daylight-saving adjustments.
-The station chart is loaded directly from HND and can differ from the snapshot.
+The chart is rendered locally from historical readings in the same snapshot as the
+current value. It offers 24-hour, 3-day, and 7-day ranges, hover values, minimum,
+maximum, net change, and a measurements table. Windows end at the newest observation,
+not the browser clock, so stale data remains visible and explicitly marked stale.
+Missing intervals longer than 30 minutes are not joined by a continuous line.
 
 ## GitHub Pages
 
@@ -43,9 +49,21 @@ determines staleness from `measured_at`, not collection time. Future collectors 
 append metrics using this contract. Failed sources currently block deployment;
 partial-success behavior should be defined when adding another source.
 
+The Eisbach metric additionally includes `history_source_url` and `history`, a
+chronological array of `{ "measured_at": "<ISO 8601>", "value": 116 }` samples in cm.
+HND's seven-day table is requested at 15-minute resolution. Invalid readings are
+skipped, duplicate timestamps are collapsed, and the newest reading is merged into
+the series. The current value always matches the newest observation in the series.
+Missing history in an older snapshot shows an unavailable state, not invented data.
+
 Generated JSON is ignored by Git and deployed as part of the Pages artifact.
-It is a latest-reading snapshot, not historical storage. Trend charts will require
-a separate persistent archive; the current chart is provided by HND Bayern.
+Each run refetches the rolling seven-day history from HND, so charts work immediately
+without accumulating samples in GitHub Actions. This is not a permanent archive:
+retention beyond that window will need separate persistent storage. Failure to fetch
+either current or historical data stops deployment and preserves the previous site.
+
+Chart.js 4.4.8 is vendored under `dashboard/vendor/`, with its MIT license alongside
+the distribution. No build tool or external chart service is required.
 
 ## Eisbach Collector
 
@@ -67,10 +85,12 @@ Network failures and missing readings produce a nonzero exit status.
 To use it from Python:
 
 ```python
-from dashboard_danzer import fetch_water_level
+from dashboard_danzer import fetch_water_level, fetch_water_level_history
 
 reading = fetch_water_level()
 print(reading.level_cm, reading.measured_at)
+history = fetch_water_level_history()
+print(len(history), history[0].measured_at, history[-1].measured_at)
 ```
 
 Water levels are centimetres above the station's gauge datum, not water depth.

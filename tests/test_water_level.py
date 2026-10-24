@@ -5,7 +5,15 @@ from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 from urllib.error import URLError
 
-from dashboard_danzer import SOURCE_URL, fetch_water_level, main, parse_water_level
+from dashboard_danzer import (
+    HISTORY_URL,
+    SOURCE_URL,
+    fetch_water_level,
+    fetch_water_level_history,
+    main,
+    parse_water_level,
+    parse_water_levels,
+)
 
 
 PAGE = """
@@ -45,9 +53,16 @@ class WaterLevelTests(unittest.TestCase):
                 reading = parse_water_level(PAGE.replace(">116<", f">{value}<"))
                 self.assertEqual(reading.level_cm, 117)
 
+    def test_history_is_sorted_and_deduplicated(self) -> None:
+        readings = parse_water_levels(PAGE + PAGE)
+        self.assertEqual([point.level_cm for point in readings], [117, 116])
+        self.assertLess(readings[0].measured_at, readings[1].measured_at)
+
+    @patch("dashboard_danzer.fetch_water_level_history")
     @patch("dashboard_danzer.fetch_water_level")
-    def test_dashboard_export(self, mock_fetch: MagicMock) -> None:
+    def test_dashboard_export(self, mock_fetch: MagicMock, mock_history: MagicMock) -> None:
         mock_fetch.return_value = parse_water_level(PAGE)
+        mock_history.return_value = parse_water_levels(PAGE)
         with TemporaryDirectory() as directory:
             output = Path(directory) / "data" / "latest.json"
             with patch("sys.argv", ["main.py", "--output", str(output)]):
@@ -58,7 +73,52 @@ class WaterLevelTests(unittest.TestCase):
             self.assertEqual(snapshot["metrics"][0]["value"], 116)
             self.assertEqual(snapshot["metrics"][0]["unit"], "cm")
             self.assertEqual(snapshot["metrics"][0]["status"], "ok")
+            self.assertEqual(len(snapshot["metrics"][0]["history"]), 2)
+            self.assertEqual(snapshot["metrics"][0]["history"][0]["value"], 117)
+            self.assertEqual(snapshot["metrics"][0]["history_source_url"], HISTORY_URL)
             self.assertFalse(output.with_suffix(".json.tmp").exists())
+
+    @patch("dashboard_danzer.fetch_water_level_history")
+    @patch("dashboard_danzer.fetch_water_level")
+    def test_export_merges_latest_and_history_updates(
+        self, mock_fetch: MagicMock, mock_history: MagicMock
+    ) -> None:
+        for latest_is_newer in (True, False):
+            with self.subTest(latest_is_newer=latest_is_newer), TemporaryDirectory() as directory:
+                older = parse_water_level(PAGE)
+                newer = parse_water_level(PAGE.replace("20:45", "21:15"))
+                mock_fetch.return_value = newer if latest_is_newer else older
+                mock_history.return_value = [older if latest_is_newer else newer]
+                output = Path(directory) / "latest.json"
+                with patch("sys.argv", ["main.py", "--output", str(output)]):
+                    main()
+                metric = json.loads(output.read_text())["metrics"][0]
+                self.assertEqual(len(metric["history"]), 2)
+                self.assertEqual(metric["measured_at"], newer.measured_at.isoformat())
+                self.assertEqual(metric["history"][-1]["measured_at"], metric["measured_at"])
+
+    @patch("dashboard_danzer.fetch_water_level_history", side_effect=URLError("offline"))
+    @patch("dashboard_danzer.fetch_water_level")
+    def test_failed_history_fetch_preserves_snapshot(
+        self, mock_fetch: MagicMock, _mock_history: MagicMock
+    ) -> None:
+        mock_fetch.return_value = parse_water_level(PAGE)
+        with TemporaryDirectory() as directory:
+            output = Path(directory) / "latest.json"
+            output.write_text("previous snapshot")
+            with patch("sys.argv", ["main.py", "--output", str(output)]):
+                with self.assertRaises(SystemExit):
+                    main()
+            self.assertEqual(output.read_text(), "previous snapshot")
+
+    @patch("dashboard_danzer.urlopen")
+    def test_history_fetch_uses_historical_table(self, mock_urlopen: MagicMock) -> None:
+        response = mock_urlopen.return_value.__enter__.return_value
+        response.headers.get_content_charset.return_value = "utf-8"
+        response.read.return_value = PAGE.encode()
+        self.assertEqual(len(fetch_water_level_history()), 2)
+        self.assertEqual(mock_urlopen.call_args.args[0].full_url, HISTORY_URL)
+        self.assertEqual(mock_urlopen.call_args.kwargs["timeout"], 30)
 
     @patch("dashboard_danzer.fetch_water_level", side_effect=URLError("offline"))
     def test_failed_fetch_preserves_snapshot(self, _mock_fetch: MagicMock) -> None:

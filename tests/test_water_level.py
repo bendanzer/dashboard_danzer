@@ -6,13 +6,19 @@ from unittest.mock import MagicMock, patch
 from urllib.error import URLError
 
 from dashboard_danzer import (
+    DISCHARGE_HISTORY_URL,
+    DISCHARGE_URL,
     HISTORY_URL,
     SOURCE_URL,
     fetch_water_level,
     fetch_water_level_history,
+    fetch_discharge,
+    fetch_notices,
     main,
     parse_water_level,
     parse_water_levels,
+    parse_discharge,
+    parse_notices,
 )
 
 
@@ -34,6 +40,91 @@ class WaterLevelTests(unittest.TestCase):
         weather_patch = patch("dashboard_danzer.fetch_weather", return_value={"status": "unavailable"})
         self.mock_weather = weather_patch.start()
         self.addCleanup(weather_patch.stop)
+        discharge_patch = patch("dashboard_danzer.fetch_discharge", return_value={
+            "id": "eisbach_discharge", "status": "ok", "value": 15,
+        })
+        self.mock_discharge = discharge_patch.start()
+        self.addCleanup(discharge_patch.stop)
+        notices_patch = patch("dashboard_danzer.fetch_notices", return_value={
+            "status": "unavailable", "access_status": "unverified",
+        })
+        self.mock_notices = notices_patch.start()
+        self.addCleanup(notices_patch.stop)
+
+    def test_notices_are_relevant_official_and_deduplicated(self) -> None:
+        html = """<h1>Rathaus Umschau</h1>
+        <a href="/2026/eisbach">Eisbachwelle update</a>
+        <a href="/2026/eisbach">Eisbachwelle update</a>
+        <a href="https://example.com/">Eisbach unverified</a>
+        <a href="javascript:alert(1)">Eisbach unsafe link</a>
+        <a href="/other">Unrelated city news</a>"""
+        self.assertEqual(parse_notices(html), [{
+            "title": "Eisbachwelle update", "url": "https://ru.muenchen.de/2026/eisbach",
+        }])
+        self.assertEqual(parse_notices("<h1>Rathaus Umschau</h1>"), [])
+        with self.assertRaises(ValueError):
+            parse_notices("<h1>Service unavailable</h1>")
+
+    @patch("dashboard_danzer._fetch_html", return_value="<h1>Rathaus Umschau</h1>")
+    def test_empty_notices_never_means_open(self, _mock_html: MagicMock) -> None:
+        notices = fetch_notices()
+        self.assertEqual(notices["access_status"], "unverified")
+        self.assertEqual(notices["coverage"], "latest_issue_only")
+        self.assertEqual(notices["items"], [])
+
+    @patch("dashboard_danzer.fetch_water_level_history")
+    @patch("dashboard_danzer.fetch_water_level")
+    def test_notices_failure_does_not_block_gauge_export(
+        self, mock_fetch: MagicMock, mock_history: MagicMock
+    ) -> None:
+        mock_fetch.return_value = parse_water_level(PAGE)
+        mock_history.return_value = parse_water_levels(PAGE)
+        self.mock_notices.side_effect = URLError("city offline")
+        with TemporaryDirectory() as directory:
+            output = Path(directory) / "latest.json"
+            with patch("sys.argv", ["main.py", "--output", str(output)]), patch("sys.stderr"):
+                main()
+            snapshot = json.loads(output.read_text())
+            self.assertEqual(snapshot["notices"]["access_status"], "unverified")
+            self.assertEqual(snapshot["notices"]["status"], "unavailable")
+            self.assertEqual(snapshot["metrics"][0]["value"], 116)
+
+    def test_discharge_parser_uses_correct_quantity_and_decimal_comma(self) -> None:
+        page = PAGE.replace("Wasserstand", "Abfluss").replace(">116<", ">14,7<")
+        readings = parse_discharge(page + page)
+        self.assertEqual([point.value for point in readings], [117, 14.7])
+        with self.assertRaises(ValueError):
+            parse_discharge(PAGE)
+        for invalid in ("NaN", "inf", "-1"):
+            with self.subTest(invalid=invalid):
+                self.assertEqual(len(parse_discharge(page.replace(">14,7<", f">{invalid}<"))), 1)
+
+    @patch("dashboard_danzer._fetch_html")
+    def test_discharge_fetch_merges_current_and_history(self, mock_html: MagicMock) -> None:
+        page = PAGE.replace("Wasserstand", "Abfluss").replace(">116<", ">14,7<")
+        mock_html.side_effect = [page.replace("20:45", "21:15"), page]
+        metric = fetch_discharge()
+        self.assertEqual(metric["unit"], "m\u00b3/s")
+        self.assertEqual(metric["value"], 14.7)
+        self.assertEqual(len(metric["history"]), 3)
+        self.assertEqual(mock_html.call_args_list[0].args[0], DISCHARGE_URL)
+        self.assertEqual(mock_html.call_args_list[1].args[0], DISCHARGE_HISTORY_URL)
+
+    @patch("dashboard_danzer.fetch_water_level_history")
+    @patch("dashboard_danzer.fetch_water_level")
+    def test_discharge_failure_does_not_block_water_level(
+        self, mock_fetch: MagicMock, mock_history: MagicMock
+    ) -> None:
+        mock_fetch.return_value = parse_water_level(PAGE)
+        mock_history.return_value = parse_water_levels(PAGE)
+        self.mock_discharge.side_effect = URLError("discharge offline")
+        with TemporaryDirectory() as directory:
+            output = Path(directory) / "latest.json"
+            with patch("sys.argv", ["main.py", "--output", str(output)]), patch("sys.stderr"):
+                main()
+            snapshot = json.loads(output.read_text())
+            self.assertEqual(snapshot["discharge"]["status"], "unavailable")
+            self.assertEqual(len(snapshot["metrics"]), 1)
 
     def test_latest_reading_and_local_timezone(self) -> None:
         reading = parse_water_level(PAGE)

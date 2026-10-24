@@ -1,6 +1,7 @@
 # City Surf
 
-A personal city-surf conditions dashboard, starting with the Eisbach water level.
+A personal city-surf conditions dashboard for Eisbach water level, discharge,
+weather, and relevant official city-bulletin mentions.
 Python collects current and historical gauge observations and Munich weather into
 a versioned JSON snapshot; GitHub Pages serves the dashboard. Weather forecasts are
 not predictions of wave quality, surf safety, or access.
@@ -9,6 +10,7 @@ not predictions of wave quality, surf safety, or access.
 
 ```sh
 uv run main.py --output dashboard/data/latest.json
+uv run python -m dashboard_danzer.temperature --archive .temperature-archive/water-temperature.json --output dashboard/data/water-temperature.json
 uv run python -m http.server 8000 --directory dashboard --bind 127.0.0.1
 ```
 
@@ -17,7 +19,8 @@ Refresh reloads the deployed snapshot, not the upstream gauge. It also checks fo
 new snapshots every five minutes. Readings older than 90 minutes are marked stale.
 Times are displayed in Europe/Berlin, including daylight-saving adjustments.
 The chart is rendered locally from historical readings in the same snapshot as the
-current value. It offers 24-hour, 3-day, and 7-day ranges, hover values, minimum,
+current value. Switch between water level and discharge, with 24-hour, 3-day,
+and 7-day ranges, hover values, minimum,
 maximum, net change, and a measurements table. Windows end at the newest observation,
 not the browser clock, so stale data remains visible and explicitly marked stale.
 Missing intervals longer than 30 minutes are not joined by a continuous line.
@@ -35,9 +38,10 @@ GitHub schedules can be delayed; on public repositories they can be disabled aft
 60 days without repository activity. This is not a real-time alerting service.
 Pages must be available for your repository visibility and GitHub plan.
 
-Gauge collection or validation failures stop publication, leaving the previous
-deployment online. Weather is optional: an API or validation failure publishes fresh
-gauge data with weather explicitly unavailable. No old weather is silently reused.
+Water-level collection or validation failures stop publication, leaving the previous
+deployment online. Discharge, weather, and city bulletins are optional: a failure
+publishes fresh water-level data with the failed source explicitly unavailable.
+Old optional-source data is not silently reused.
 The dashboard recomputes staleness even while open. All deployed data is
 public. No tokens or secrets belong in the JSON. The workflow uses GitHub's built-in
 deployment token and does not require a personal access token.
@@ -48,8 +52,11 @@ deployment token and does not require a personal access token.
 Each metric has `id`, `name`, `location`, `value`, `unit`, `status`, `measured_at`,
 `station_id`, `source_name`, and `source_url`. The UI accepts `status: "ok"` and
 determines staleness from `measured_at`, not collection time. Future collectors can
-append metrics using this contract. Gauge failures block deployment; the separate
-optional `weather` field uses `status: "ok"` or `status: "unavailable"`.
+append metrics using this contract. Water-level failures block deployment; the
+optional `weather` and `notices` fields use `status: "ok"` or `status: "unavailable"`.
+On success discharge is an `eisbach_discharge` metric with unit `m\u00b3/s` and its own
+history. If collection fails, the metric is omitted and a `discharge` object reports
+`status: "unavailable"`. The UI does not substitute zero for missing discharge.
 
 The Eisbach metric additionally includes `history_source_url` and `history`, a
 chronological array of `{ "measured_at": "<ISO 8601>", "value": 116 }` samples in cm.
@@ -62,7 +69,8 @@ Generated JSON is ignored by Git and deployed as part of the Pages artifact.
 Each run refetches the rolling seven-day history from HND, so charts work immediately
 without accumulating samples in GitHub Actions. This is not a permanent archive:
 retention beyond that window will need separate persistent storage. Failure to fetch
-either current or historical data stops deployment and preserves the previous site.
+either current or historical water-level data stops deployment and preserves the
+previous site. Discharge errors do not prevent water-level publication.
 
 Chart.js 4.4.8 is vendored under `dashboard/vendor/`, with its MIT license alongside
 the distribution. No build tool or external chart service is required.
@@ -95,17 +103,88 @@ Weather data are attributed to [Open-Meteo](https://open-meteo.com/), under
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); field names and timestamps
 are normalized for this dashboard. Commercial use requires reviewing the API plan.
 
-## Other Wave-Relevant Sources
+## Discharge
 
-- HND also publishes [discharge at this station](https://www.hnd.bayern.de/pegel/isar/muenchen-himmelreichbruecke-16515005/abfluss)
-	in cubic metres per second. Together with level and recent changes, it is a useful
-	next input, but cannot determine wave quality or safe access by itself.
-- Water temperature would help with thermal exposure planning if a representative
-	nearby source is available. Air temperature is not a substitute.
-- Official wave closures, works, and access notices should override any inferred
-	surf recommendation. These need a verified official source before integration.
-- Wind, daylight, and rain help session planning. Local rainfall alone is not a
-	reliable predictor of Eisbach flow, wave shape, or water quality.
+HND publishes [discharge at the same station](https://www.hnd.bayern.de/pegel/isar/muenchen-himmelreichbruecke-16515005/abfluss)
+in cubic metres per second. Each run fetches the current reading and seven-day
+15-minute history, merges and deduplicates them, and exports them beside water level.
+Invalid, negative, non-finite, or missing discharge values are skipped. This is a
+station discharge value, not wave height or a direct measurement of wave quality.
+No surfability or safety thresholds have been inferred from it.
+
+## Official Mentions And Access
+
+The collector reads the latest [Rathaus Umschau](https://ru.muenchen.de/), Munich's
+official city bulletin, and extracts up to five distinct links with "Eisbach" in
+their titles. Links must remain on the official HTTPS host. Collection includes
+`fetched_at` and `coverage: "latest_issue_only"`, not a claim that all older notices
+or closures have been searched. Headlines can include proposals and political
+motions, not just operational notices; do not interpret them as access decisions.
+
+Access is always `access_status: "unverified"`. No matching headlines, a failed
+request, or stable gauge data never implies open access. The UI also links to the
+[Englischer Garten authority](https://www.schloesser.bayern.de/deutsch/garten/objekte/mu_engl.htm).
+Official restrictions and on-site signage take precedence. Bulletin fetches older
+than 90 minutes are labelled outdated; fetched time is not article publication time.
+
+## Water Temperature And Limitations
+
+Current water temperature remains unavailable. The GKD service rejected requests,
+so no direct station reading could be verified. Instead we archive the explicitly
+labelled **reported 72-hour average** on [Eisbachwetter](https://www.eisbachwetter.de/).
+This is a third-party summary, not a current measurement, daily mean, or direct
+station feed. Consecutive 72-hour averages overlap. No historical samples are
+invented, and the archive cannot reconstruct instantaneous water temperatures.
+
+The collector checks the average field, its 72-hour label, and Celsius unit. It
+never reads the separate current-value placeholder. Each observation stores
+`collected_at` (UTC), `value_c`, the literal `source_updated_text`, and
+`source_update_unchanged`. The source page's update text is not parsed or presented
+as a sensor measurement time. An unchanged update text is flagged; a repeated value
+does not imply the source has refreshed. Collection age alone cannot prove source
+freshness. Attribution links to Eisbachwetter appear alongside the value.
+
+### Persistent Daily Storage
+
+The Pages workflow automatically creates a **`temperature-data` branch** on its
+first run, initialized from the workflow's code commit. It checks out that branch
+separately and changes only its root `water-temperature.json` archive. The branch's
+code files are not used to run the collector or publish the dashboard.
+
+The existing half-hourly workflow checks whether at least **24 elapsed hours** have
+passed since the last successful collection. If not, no temperature request is
+made and no observation or commit is added. Once due, a successful fetch adds one
+observation and the workflow commits it to `temperature-data` with the built-in
+GitHub token. Retries and manual deployments within 24 hours do not duplicate it.
+This is approximately daily, not an exact-time service: schedules can be delayed,
+and failed requests are retried on subsequent runs. Missed days are not backfilled.
+UTC elapsed-time checks avoid daylight-saving calendar-day ambiguities.
+
+The archive survives runner cleanup and Pages redeployments; it does not rely on
+caches or temporary artifacts. Do not delete or rewrite `temperature-data` if you
+want to retain the history. The archive is also published at
+`data/water-temperature.json`, with `collection_status` added for the UI. Local
+preview data under `.temperature-archive/` are ignored by Git; production history
+starts with the first successful deployed collector run, not this local preview.
+
+The build job now needs `contents: write` to create/update this data branch. Branch
+rules must permit the workflow token to push to `temperature-data`. No personal
+access token is needed. Bot commits do not start another workflow with the default
+token, and the push trigger is restricted to `main`. Failed pushes stop the build
+rather than risk publishing unpersisted history; a later run can retry. Existing
+workflow concurrency serializes writers. Corrupt or future-dated archives stop the
+build instead of being reset. A temperature-source outage preserves existing data
+and does not prevent publication of other sources.
+
+The UI plots daily snapshots with 30-day, 90-day, and all-history views, plus an
+accessible table. A single real point is shown initially; a trend needs more than
+one collection. Gaps exceeding 36 hours are not joined. The latest collection is
+marked overdue after 36 hours; failed fetches keep old history visibly labelled.
+No temperature is guessed from air, another river, or a model.
+
+Wind, daylight, and rain help session planning. Local rainfall alone is not a
+reliable predictor of Eisbach flow, wave shape, or water quality. This dashboard
+does not provide safety clearance or water-quality assessments.
 
 ## Eisbach Collector
 

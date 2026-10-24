@@ -26,6 +26,24 @@
         <span>Collection <time id="collected-at">&mdash;</time></span>
       </div>
       <p id="notice" class="notice" role="status" aria-live="polite">Loading observations...</p>
+      <p id="optional-notice" class="notice warning" role="status" hidden></p>
+      <section class="wave-context" aria-label="Wave access and water temperature">
+        <div>
+          <div class="metric-heading"><h2>Access &amp; official mentions</h2><span class="badge stale">Not verified</span></div>
+          <p id="notices-status" class="history-status">City bulletin loading...</p>
+          <ul id="official-notices" class="official-notices"></ul>
+          <p class="context-note">Bulletin mentions do not confirm that the wave is open. Check official notices and on-site restrictions.</p>
+          <a class="source" href="https://ru.muenchen.de/" target="_blank" rel="noopener noreferrer">Munich city bulletin &nearr;</a>
+          <a class="source context-link" href="https://www.schloesser.bayern.de/deutsch/garten/objekte/mu_engl.htm" target="_blank" rel="noopener noreferrer">Englischer Garten authority &nearr;</a>
+        </div>
+        <div>
+          <div class="metric-heading"><h2>Water temperature</h2><span id="temperature-badge" class="badge">72h average</span></div>
+          <p id="temperature-average" class="temperature-average" hidden></p>
+          <p id="temperature-status" class="history-status" role="status">Loading daily archive...</p>
+          <p class="context-note">Reported 72-hour average, not a current measurement. Air temperature is not water temperature.</p>
+          <a class="source" href="https://www.eisbachwetter.de/" target="_blank" rel="noopener noreferrer">Source: Eisbachwetter &nearr;</a>
+        </div>
+      </section>
       <div class="conditions-grid">
         <section id="metrics" class="metrics" aria-label="Latest observations" aria-busy="true"></section>
         <section class="weather" aria-labelledby="weather-heading">
@@ -47,12 +65,18 @@
       </div>
       <section id="station-record" class="station-record" hidden>
         <div class="section-heading">
-          <h2>Water level history</h2>
+          <h2 id="history-heading">Water level history</h2>
+          <div class="history-controls">
+          <fieldset class="range-control"><legend class="visually-hidden">Gauge measurement</legend>
+            <label><input type="radio" name="history-metric" value="eisbach_water_level" checked><span>Level</span></label>
+            <label><input type="radio" name="history-metric" value="eisbach_discharge"><span>Discharge</span></label>
+          </fieldset>
           <fieldset class="range-control"><legend class="visually-hidden">History range</legend>
             <label><input type="radio" name="history-range" value="1" checked><span>24h</span></label>
             <label><input type="radio" name="history-range" value="3"><span>3 days</span></label>
             <label><input type="radio" name="history-range" value="7"><span>7 days</span></label>
           </fieldset>
+          </div>
         </div>
         <p id="history-status" class="history-status" role="status"></p>
         <dl class="history-summary" hidden>
@@ -62,10 +86,25 @@
         </dl>
         <figure>
           <div id="chart-container" class="chart-container" hidden><canvas id="water-level-chart" role="img" aria-label="Historical Eisbach water levels" aria-describedby="history-status"></canvas></div>
-          <figcaption>Water level above gauge datum. Gauge measurements do not assess wave quality, safety, or access.</figcaption>
+          <figcaption id="history-caption">Water level above gauge datum. Gauge measurements do not assess wave quality, safety, or access.</figcaption>
         </figure>
-        <details id="history-table" hidden><summary>Measurements</summary><div class="table-scroll"><table><caption class="visually-hidden">Water levels in the selected time range</caption><thead><tr><th scope="col">Measured / Berlin</th><th scope="col">Water level / cm</th></tr></thead><tbody></tbody></table></div></details>
-        <a class="source history-source" href="https://www.hnd.bayern.de/pegel/isar/muenchen-himmelreichbruecke-16515005/tabelle?methode=wasserstand&amp;days=7&amp;setdiskr=15" target="_blank" rel="noopener noreferrer">Data: HND Bayern / Station 16515005 &nearr;</a>
+        <details id="history-table" hidden><summary>Measurements</summary><div class="table-scroll"><table><caption class="visually-hidden">Gauge readings in the selected time range</caption><thead><tr><th scope="col">Measured / Berlin</th><th id="history-value-heading" scope="col">Water level / cm</th></tr></thead><tbody></tbody></table></div></details>
+        <a id="history-source" class="source history-source" href="https://www.hnd.bayern.de/pegel/isar/muenchen-himmelreichbruecke-16515005/tabelle?methode=wasserstand&amp;days=7&amp;setdiskr=15" target="_blank" rel="noopener noreferrer">Data: HND Bayern / Station 16515005 &nearr;</a>
+      </section>
+      <section id="temperature-history" class="station-record" hidden>
+        <div class="section-heading"><h2>Water temperature / daily snapshots</h2>
+          <fieldset class="range-control"><legend class="visually-hidden">Temperature archive range</legend>
+            <label><input type="radio" name="temperature-range" value="30" checked><span>30 days</span></label>
+            <label><input type="radio" name="temperature-range" value="90"><span>90 days</span></label>
+            <label><input type="radio" name="temperature-range" value="all"><span>All</span></label>
+          </fieldset>
+        </div>
+        <p id="temperature-history-status" class="history-status" role="status"></p>
+        <div id="temperature-chart-container" class="chart-container" hidden><canvas id="temperature-chart" role="img" aria-label="Daily snapshots of reported 72-hour average water temperature"></canvas></div>
+        <p class="forecast-note">Collection times are not measurement times. Consecutive 72-hour averages overlap; this is not a record of daily water-temperature measurements.</p>
+        <p id="temperature-source-update" class="history-status"></p>
+        <details><summary>Archived snapshots</summary><div class="table-scroll"><table><caption class="visually-hidden">Archived reported averages by collection time</caption><thead><tr><th scope="col">Collected / Berlin</th><th scope="col">72h average / &deg;C</th></tr></thead><tbody id="temperature-rows"></tbody></table></div></details>
+        <a class="source history-source" href="data/water-temperature.json">Temperature archive / JSON &nearr;</a>
       </section>
       <section id="weather-forecast" class="forecast" hidden>
         <div class="section-heading">

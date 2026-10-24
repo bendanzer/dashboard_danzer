@@ -11,3 +11,4 @@ wheels/
 
 # Generated dashboard snapshots
 dashboard/data/
+.temperature-archive/

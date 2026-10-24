@@ -33,7 +33,7 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       pages: read
     steps:
       - uses: actions/checkout@v4
@@ -41,6 +41,35 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked
+      - name: Ensure persistent temperature data branch exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/temperature-data" > /dev/null 2>&1; then
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f ref=refs/heads/temperature-data -f sha="$GITHUB_SHA"
+          fi
+      - uses: actions/checkout@v4
+        with:
+          ref: temperature-data
+          path: .temperature-archive
+      - name: Collect temperature average if 24 hours have elapsed
+        run: >-
+          uv run --frozen python -m dashboard_danzer.temperature
+          --archive .temperature-archive/water-temperature.json
+          --output dashboard/data/water-temperature.json
+      - name: Persist new temperature snapshot
+        working-directory: .temperature-archive
+        run: |
+          if [[ -f water-temperature.json ]]; then
+            git add -- water-temperature.json
+            if ! git diff --cached --quiet; then
+              git config user.name "github-actions[bot]"
+              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git commit -m "Record daily reported temperature average"
+              git push origin HEAD:temperature-data
+            fi
+          fi
       - name: Collect latest observations
         run: uv run --frozen main.py --output dashboard/data/latest.json
       - uses: actions/configure-pages@v5

@@ -9,6 +9,126 @@ const dateFormat = new Intl.DateTimeFormat("en-GB", {
 let snapshot = null;
 let refreshFailed = false;
 let historyChart = null;
+let temperatureArchive = null;
+let temperatureFailed = false;
+let temperatureChart = null;
+
+function renderTemperature() {
+  const archive = temperatureArchive;
+  const status = document.querySelector("#temperature-status");
+  const average = document.querySelector("#temperature-average");
+  const badge = document.querySelector("#temperature-badge");
+  const section = document.querySelector("#temperature-history");
+  if (!archive?.observations.length) {
+    status.textContent = temperatureFailed ? "Temperature archive unavailable." : "No daily temperature snapshots yet.";
+    badge.textContent = "Unavailable";
+    badge.classList.add("stale");
+    average.hidden = true;
+    section.hidden = true;
+    return;
+  }
+  average.hidden = false;
+  section.hidden = false;
+  const latest = archive.observations.at(-1);
+  const overdue = Date.now() - Date.parse(latest.collected_at) > 36 * 3600000;
+  const failed = temperatureFailed || archive.collection_status === "unavailable";
+  average.textContent = `${latest.value_c.toLocaleString("en-GB", { maximumFractionDigits: 1 })} \u00b0C`;
+  badge.textContent = overdue ? "Archive overdue" : "72h average";
+  badge.classList.toggle("stale", overdue || failed || latest.source_update_unchanged === true);
+  status.textContent = `Collected ${dateFormat.format(new Date(latest.collected_at))} Berlin${failed ? " / Collection unavailable; showing saved history" : ""}${overdue ? " / Daily collection overdue" : ""}${latest.source_update_unchanged ? " / Source update unchanged since previous collection" : ""}`;
+}
+
+function renderTemperatureChart() {
+  if (temperatureChart) temperatureChart.destroy();
+  temperatureChart = null;
+  const container = document.querySelector("#temperature-chart-container");
+  container.hidden = true;
+  if (!temperatureArchive?.observations.length) return;
+  const all = temperatureArchive.observations;
+  const last = Date.parse(all.at(-1).collected_at);
+  const range = document.querySelector('[name="temperature-range"]:checked').value;
+  const points = all.filter((point) => range === "all" || Date.parse(point.collected_at) >= last - Number(range) * 86400000);
+  document.querySelector("#temperature-history-status").textContent = `${points.length} daily ${points.length === 1 ? "snapshot / No trend yet" : "snapshots"} / reported 72-hour averages`;
+  document.querySelector("#temperature-source-update").textContent = all.at(-1).source_updated_text
+    ? `Latest source page update text (not a measurement time): ${all.at(-1).source_updated_text}`
+    : "Source measurement time is not provided.";
+  const rows = document.createDocumentFragment();
+  for (const point of [...points].reverse()) {
+    const row = document.createElement("tr");
+    const collected = document.createElement("td");
+    const value = document.createElement("td");
+    collected.textContent = dateFormat.format(new Date(point.collected_at));
+    value.textContent = point.value_c.toLocaleString("en-GB", { maximumFractionDigits: 1 });
+    row.append(collected, value);
+    rows.append(row);
+  }
+  document.querySelector("#temperature-rows").replaceChildren(rows);
+  if (typeof window.Chart !== "function") return;
+  container.hidden = false;
+  const canvas = document.querySelector("#temperature-chart");
+  canvas.setAttribute("aria-label", `${points.length} daily snapshots of reported 72-hour average water temperature, latest ${all.at(-1).value_c} degrees Celsius`);
+  temperatureChart = new window.Chart(canvas, {
+    type: "line",
+    data: { datasets: [{ label: "Reported 72h average", data: points.map((point) => ({ x: Date.parse(point.collected_at), y: point.value_c })),
+      parsing: false, borderColor: "#ad4864", borderWidth: 2, pointRadius: points.length === 1 ? 5 : 2,
+      pointHitRadius: 14, tension: 0, spanGaps: 36 * 3600000 }] },
+    options: { responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: { legend: { display: false }, tooltip: { displayColors: false, callbacks: {
+        title: (items) => `Collected ${dateFormat.format(new Date(items[0].parsed.x))} Berlin`,
+        label: (item) => `${item.parsed.y} \u00b0C / reported 72h average`,
+      } } },
+      scales: {
+        x: { type: "linear", ...(points.length === 1 ? { min: last - 12 * 3600000, max: last + 12 * 3600000 } : {}),
+          grid: { display: false }, ticks: { maxTicksLimit: 5, maxRotation: 0, callback: (value) => new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Berlin", day: "numeric", month: "short" }).format(new Date(value)) } },
+        y: { title: { display: true, text: "Reported 72h average / \u00b0C" }, ticks: { maxTicksLimit: 6 } },
+      },
+    },
+  });
+}
+
+async function loadTemperature() {
+  try {
+    const response = await fetch("data/water-temperature.json", { cache: "no-store" });
+    if (!response.ok) throw new Error("Temperature archive unavailable");
+    const archive = await response.json();
+    if (archive.schema_version !== 1 || archive.statistic !== "reported_72h_average" || archive.unit !== "celsius" ||
+        !Array.isArray(archive.observations) || !archive.observations.every((point, index, points) => point &&
+          Number.isFinite(point.value_c) && Number.isFinite(Date.parse(point.collected_at)) &&
+          typeof point.source_updated_text === "string" && (index === 0 || Date.parse(point.collected_at) - Date.parse(points[index - 1].collected_at) >= 86400000))) {
+      throw new Error("Invalid temperature archive");
+    }
+    temperatureArchive = archive;
+    temperatureFailed = false;
+  } catch {
+    temperatureFailed = true;
+  }
+  renderTemperature();
+  renderTemperatureChart();
+}
+
+function renderNotices() {
+  const notices = snapshot?.notices;
+  const status = document.querySelector("#notices-status");
+  const list = document.querySelector("#official-notices");
+  list.replaceChildren();
+  if (notices?.status !== "ok" || !Array.isArray(notices.items) || !Number.isFinite(Date.parse(notices.fetched_at))) {
+    status.textContent = "City bulletin unavailable. Access status is not verified.";
+    return;
+  }
+  const items = notices.items.filter((item) => typeof item?.title === "string" && typeof item.url === "string" && item.url.startsWith("https://ru.muenchen.de/"));
+  const stale = Date.now() - Date.parse(notices.fetched_at) > staleAfterMs;
+  status.textContent = `${stale ? "Outdated bulletin snapshot" : "Latest city bulletin"} / fetched ${dateFormat.format(new Date(notices.fetched_at))} Berlin${items.length ? "" : " / No Eisbach mentions in this issue"}`;
+  for (const item of items.slice(0, 5)) {
+    const row = document.createElement("li");
+    const link = document.createElement("a");
+    link.href = item.url;
+    link.textContent = item.title;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    row.append(link);
+    list.append(row);
+  }
+}
 
 const weatherCodes = {
   0: "Clear sky", 1: "Mainly clear", 2: "Partly cloudy", 3: "Overcast",
@@ -88,7 +208,15 @@ function renderWeather() {
 }
 
 function renderHistory() {
-  const metric = snapshot?.metrics.find((entry) => entry.id === "eisbach_water_level");
+  const selected = document.querySelector('[name="history-metric"]:checked').value;
+  const metric = snapshot?.metrics.find((entry) => entry.id === selected);
+  const isDischarge = selected === "eisbach_discharge";
+  const label = isDischarge ? "Discharge" : "Water level";
+  const unit = isDischarge ? "m\u00b3/s" : "cm";
+  document.querySelector("#history-heading").textContent = `${label} history`;
+  document.querySelector("#history-value-heading").textContent = `${label} / ${unit}`;
+  document.querySelector("#history-caption").textContent = `${isDischarge ? "Discharge is the volume passing the gauge per second." : "Water level is height above gauge datum, not depth."} Gauge measurements do not assess wave quality, safety, or access.`;
+  document.querySelector("#history-source").href = `https://www.hnd.bayern.de/pegel/isar/muenchen-himmelreichbruecke-16515005/tabelle?methode=${isDischarge ? "abfluss" : "wasserstand"}&days=7&setdiskr=15`;
   const status = document.querySelector("#history-status");
   const container = document.querySelector("#chart-container");
   const summary = document.querySelector(".history-summary");
@@ -101,7 +229,7 @@ function renderHistory() {
   const valid = Array.isArray(metric?.history) && metric.history.length > 0 &&
     metric.history.every((point) => Number.isFinite(point?.value) && Number.isFinite(Date.parse(point.measured_at)));
   if (!valid) {
-    status.textContent = "Historical readings unavailable for this snapshot.";
+    status.textContent = `${label} history unavailable for this snapshot.`;
     return;
   }
   const unique = new Map(metric.history.map((point) => [Date.parse(point.measured_at), point.value]));
@@ -115,9 +243,9 @@ function renderHistory() {
   const maximum = Math.max(...values);
   const change = visible.at(-1).y - visible[0].y;
   const format = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 1 });
-  document.querySelector("#history-min").textContent = `${format.format(minimum)} cm`;
-  document.querySelector("#history-max").textContent = `${format.format(maximum)} cm`;
-  document.querySelector("#history-change").textContent = `${change > 0 ? "+" : ""}${format.format(change)} cm`;
+  document.querySelector("#history-min").textContent = `${format.format(minimum)} ${unit}`;
+  document.querySelector("#history-max").textContent = `${format.format(maximum)} ${unit}`;
+  document.querySelector("#history-change").textContent = `${change > 0 ? "+" : ""}${format.format(change)} ${unit}`;
   status.textContent = `${visible.length} observations / ${dateFormat.format(new Date(visible[0].x))} to ${dateFormat.format(new Date(end))} / Berlin time`;
   summary.hidden = false;
   const rows = document.createDocumentFragment();
@@ -138,12 +266,12 @@ function renderHistory() {
   }
   container.hidden = false;
   const canvas = document.querySelector("#water-level-chart");
-  canvas.setAttribute("aria-label", `Eisbach water levels, ${visible.length} observations, minimum ${minimum} cm, maximum ${maximum} cm`);
+  canvas.setAttribute("aria-label", `Eisbach ${label.toLowerCase()}, ${visible.length} observations, minimum ${minimum} ${unit}, maximum ${maximum} ${unit}`);
   historyChart = new window.Chart(canvas, {
     type: "line",
     data: { datasets: [{
-      label: "Water level", data: visible, parsing: false, normalized: true,
-      borderColor: "#176448", backgroundColor: "rgba(23, 100, 72, 0.08)",
+      label, data: visible, parsing: false, normalized: true,
+      borderColor: isDischarge ? "#007b8a" : "#176448", backgroundColor: isDischarge ? "rgba(0, 123, 138, 0.08)" : "rgba(23, 100, 72, 0.08)",
       borderWidth: 2, fill: true, pointRadius: visible.length === 1 ? 4 : 0,
       pointHitRadius: 16, pointHoverRadius: 4, tension: 0, spanGaps: 30 * 60 * 1000,
     }] },
@@ -154,7 +282,7 @@ function renderHistory() {
         legend: { display: false },
         tooltip: { displayColors: false, callbacks: {
           title: (items) => `${dateFormat.format(new Date(items[0].parsed.x))} Berlin`,
-          label: (item) => `${format.format(item.parsed.y)} cm`,
+          label: (item) => `${format.format(item.parsed.y)} ${unit}`,
         } },
       },
       scales: {
@@ -165,9 +293,9 @@ function renderHistory() {
             ? { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" }
             : { timeZone: "Europe/Berlin", day: "2-digit", month: "short" }).format(new Date(value)),
         } },
-        y: { suggestedMin: minimum - 3, suggestedMax: maximum + 3,
-          title: { display: true, text: "Water level / cm" },
-          grid: { color: "#e5eae6" }, ticks: { precision: 0, maxTicksLimit: 6 },
+        y: { suggestedMin: isDischarge ? Math.max(0, minimum - 0.5) : minimum - 3, suggestedMax: maximum + (isDischarge ? 0.5 : 3),
+          title: { display: true, text: `${label} / ${unit}` },
+          grid: { color: "#e5eae6" }, ticks: { precision: isDischarge ? 1 : 0, maxTicksLimit: 6 },
         },
       },
     },
@@ -211,14 +339,16 @@ function render() {
     measured.dateTime = metric.measured_at;
     measured.textContent = `${dateFormat.format(new Date(metric.measured_at))} Berlin`;
     item.querySelector(".station-id").textContent = metric.station_id;
-    item.querySelector(".datum").hidden = metric.id !== "eisbach_water_level";
+    const datum = item.querySelector(".datum");
+    datum.hidden = !["eisbach_water_level", "eisbach_discharge"].includes(metric.id);
+    datum.textContent = metric.id === "eisbach_discharge" ? "Volume passing the gauge per second" : "Above gauge datum, not water depth";
     const source = item.querySelector(".source");
     source.href = metric.source_url;
     source.textContent = `Source: ${metric.source_name} \u2197`;
     fragment.append(item);
   }
   metrics.replaceChildren(fragment);
-  const count = new Set(snapshot.metrics.map((metric) => metric.source_url)).size + (validWeather(snapshot.weather) ? 1 : 0);
+  const count = new Set(snapshot.metrics.map((metric) => metric.source_name)).size + (validWeather(snapshot.weather) ? 1 : 0) + (snapshot.notices?.status === "ok" ? 1 : 0);
   document.querySelector("#source-count").textContent = `${count} data ${count === 1 ? "source" : "sources"}`;
   const collected = document.querySelector("#collected-at");
   collected.dateTime = snapshot.collected_at;
@@ -231,11 +361,17 @@ function render() {
     showNotice("");
   }
   document.querySelector("#station-record").hidden = !snapshot.metrics.some((metric) => metric.id === "eisbach_water_level");
+  const dischargeMissing = !snapshot.metrics.some((metric) => metric.id === "eisbach_discharge");
+  document.querySelector("#optional-notice").hidden = !dischargeMissing;
+  document.querySelector("#optional-notice").textContent = dischargeMissing ? "Discharge data unavailable. Water level and other available sources are shown." : "";
   renderWeather();
+  renderNotices();
+  renderTemperature();
 }
 
 async function loadSnapshot() {
   refreshButton.disabled = true;
+  const temperatureTask = loadTemperature();
   metrics.setAttribute("aria-busy", "true");
   try {
     const response = await fetch("data/latest.json", { cache: "no-store" });
@@ -251,13 +387,16 @@ async function loadSnapshot() {
     if (snapshot) render();
     else showNotice("Observations are unavailable. Please try again later or check HND Bayern directly.", "error");
   } finally {
+    await temperatureTask;
     refreshButton.disabled = false;
     metrics.setAttribute("aria-busy", "false");
   }
 }
 
 document.querySelectorAll('[name="history-range"]').forEach((input) => input.addEventListener("change", renderHistory));
+document.querySelectorAll('[name="history-metric"]').forEach((input) => input.addEventListener("change", renderHistory));
 document.querySelectorAll('[name="forecast-range"]').forEach((input) => input.addEventListener("change", renderWeather));
+document.querySelectorAll('[name="temperature-range"]').forEach((input) => input.addEventListener("change", renderTemperatureChart));
 refreshButton.addEventListener("click", loadSnapshot);
 setInterval(() => { if (snapshot) render(); }, 60 * 1000);
 setInterval(loadSnapshot, 5 * 60 * 1000);

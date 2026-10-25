@@ -33,10 +33,34 @@ Missing intervals longer than 30 minutes are not joined by a continuous line.
 4. After a successful deployment, visit https://bendanzer.github.io/dashboard_danzer/.
 
 The workflow tests pull requests without publishing. Pushes to `main`, manual runs,
-and the schedule (17 and 47 minutes past each hour, UTC) collect data and deploy.
-GitHub schedules can be delayed; on public repositories they can be disabled after
-60 days without repository activity. This is not a real-time alerting service.
+and the schedule (7, 22, 37, and 52 minutes past each hour, UTC) collect data and deploy.
+The 15-minute schedule provides additional refresh opportunities, not a guaranteed
+cadence. GitHub can delay or drop scheduled events; on public repositories schedules
+can also be disabled after 60 days without repository activity.
+This is not a real-time alerting service.
 Pages must be available for your repository visibility and GitHub plan.
+
+### Investigating Stale Data
+
+First check the live site's `data/latest.json`: `collected_at` identifies pipeline
+freshness, while each metric's `measured_at` identifies source freshness. Fresh
+collection with old measurements points upstream; an old collection points to a
+missed or failed refresh. The local preview uses local files and is not updated
+by GitHub Actions. Regenerate its JSON with the local commands above.
+
+On 25 October 2026 the workflow was active, the repository's default branch was
+`main`, and its published cron was valid. Only three scheduled runs appeared
+overnight, including a five-hour gap. Recorded runs started promptly and completed
+successfully in under a minute, so those gaps were not explained by a stuck runner,
+failed collection, or deployment lock. GitHub does not expose a diagnostic reason
+for a schedule event that never creates a run; its internal cause is unverified.
+
+The GitHub-only mitigation is more off-peak refresh opportunities and 10-minute job
+timeouts to bound future blocked runs. Each test-job summary records trigger, cron,
+start time, and commit. This cannot guarantee delivery of future schedule events,
+and warnings still turn on after 90 minutes rather than disguising stale data.
+Use **Actions > Publish Dashboard > Run workflow** for immediate manual recovery.
+A dependable timing requirement needs an external scheduler; none is configured.
 
 Water-level collection or validation failures stop publication, leaving the previous
 deployment online. Discharge, weather, and city bulletins are optional: a failure
@@ -98,7 +122,7 @@ actual date instead of "today". Unknown weather codes display "Unknown condition
 
 No API key is needed for this personal, non-commercial use. The free API's limits
 are documented in [Open-Meteo's terms](https://open-meteo.com/en/terms). The existing
-schedule normally makes 48 weather requests per day, plus manual and push runs.
+schedule targets 96 weather requests per day, plus manual and push runs.
 Weather data are attributed to [Open-Meteo](https://open-meteo.com/), under
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); field names and timestamps
 are normalized for this dashboard. Commercial use requires reviewing the API plan.
@@ -151,7 +175,7 @@ first run, initialized from the workflow's code commit. It checks out that branc
 separately and changes only its root `water-temperature.json` archive. The branch's
 code files are not used to run the collector or publish the dashboard.
 
-The existing half-hourly workflow checks whether at least **24 elapsed hours** have
+The existing 15-minute workflow checks whether at least **24 elapsed hours** have
 passed since the last successful collection. If not, no temperature request is
 made and no observation or commit is added. Once due, a successful fetch adds one
 observation and the workflow commits it to `temperature-data` with the built-in

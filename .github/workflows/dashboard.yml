@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [main]
   schedule:
-    - cron: "17,47 * * * *"
+    - cron: "7,22,37,52 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -19,7 +19,21 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
+      - name: Record refresh trigger
+        env:
+          TRIGGER: ${{ github.event_name }}
+          CRON: ${{ github.event.schedule }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          {
+            printf '## Refresh trigger\n\n'
+            printf 'Event: `%s`\n\n' "$TRIGGER"
+            printf 'Cron (UTC): `%s`\n\n' "${CRON:-not scheduled}"
+            printf 'Job started (UTC): `%s`\n\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            printf 'Commit: `%s`\n' "$COMMIT"
+          } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
         with:
@@ -32,6 +46,7 @@ jobs:
     if: github.event_name != 'pull_request'
     needs: test
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
       pages: read
@@ -80,6 +95,7 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       pages: write
       id-token: write

@@ -45,6 +45,12 @@
       "value_c": 11.3,
       "source_updated_text": "- Aktualisiert am 31.10.2026 um 09:19am -",
       "source_update_unchanged": false
+    },
+    {
+      "collected_at": "2026-11-01T15:05:54.473178+00:00",
+      "value_c": 11.0,
+      "source_updated_text": "- Aktualisiert am 01.11.2026 um 03:19pm -",
+      "source_update_unchanged": false
     }
   ]
 }

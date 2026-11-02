@@ -51,6 +51,12 @@
       "value_c": 11.0,
       "source_updated_text": "- Aktualisiert am 01.11.2026 um 03:19pm -",
       "source_update_unchanged": false
+    },
+    {
+      "collected_at": "2026-11-02T20:21:04.538849+00:00",
+      "value_c": 10.5,
+      "source_updated_text": "- Aktualisiert am 02.11.2026 um 09:19pm -",
+      "source_update_unchanged": false
     }
   ]
 }

@@ -183,6 +183,12 @@
       "value_c": 9.5,
       "source_updated_text": "- Aktualisiert am 10.11.2026 um 07:19pm -",
       "source_update_unchanged": true
+    },
+    {
+      "collected_at": "2026-11-27T02:59:19.593692+00:00",
+      "value_c": 8.5,
+      "source_updated_text": "- Aktualisiert am 27.11.2026 um 03:12am -",
+      "source_update_unchanged": false
     }
   ]
 }
